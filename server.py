@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from OpenAI import chat_with_o3, chat_with_standard
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +7,6 @@ from fastapi.staticfiles import StaticFiles
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "統計アプリ"))
 from statistics_functions import t_test, paired_t_test, simple_linear_regression, anova, kmeans_clustering  # type: ignore
 from typing import List, Union, Dict
 
@@ -145,15 +144,12 @@ async def kmeans_clustering_endpoint(request: KMeansRequest):
 
 @app.get("/")
 async def root():
-    # ルートアクセスは ホーム.html へリダイレクト
-    return RedirectResponse(url="/stats/ホーム.html")
+    """Serve the main application HTML."""
+    return FileResponse("ホーム.html")
 
 
-# Static ファイルの公開設定
-# prompt-manager ディレクトリ内の HTML/CSS/JS を /static/* で配信
-app.mount("/static", StaticFiles(directory="prompt-manager"), name="static")
-
-app.mount("/stats", StaticFiles(directory="統計アプリ"), name="stats")
+# Static file serving for files in this repository
+app.mount("/static", StaticFiles(directory="."), name="static")
 
 
 @app.post("/upload")

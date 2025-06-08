@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>統計分析アプリ</title>
+
+    <!-- Tailwind CSS & FontAwesome -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.4/css/all.min.css" />
+    <script src="https://cdn.plot.ly/plotly-2.23.0.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            background: #e3f2fd;
+        }
+        .app-container {
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        /* ───── Header ───── */
+        .navbar {
+            background: linear-gradient(90deg, #1976d2 0%, #64b5f6 100%);
+            color: #fff;
+            padding: 0.4rem 1rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        /* ───── Card ───── */
+        .card {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            transition: transform 0.18s ease;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        }
+        /* ───── Main flex layout ───── */
+        .main-content {
+            display: flex;
+            flex: 1;
+            flex-wrap: nowrap;   /* ← ここを明示的に nowrap に */
+            background: #f5f7fa;
+            overflow-x: auto;    /* もし幅が足りない場合でも横スクロールで縦落ちを防ぐ */
+        }
+        /* ───── Upload zone ───── */
+        .upload-zone {
+            border: 2px dashed #1976d2;
+            background: #eaf4fe;
+            transition: background 0.2s ease;
+        }
+        .upload-zone:hover {
+            background: #d7eaff;
+            cursor: pointer;
+        }
+        /* ───── Scroll area for analysis list ───── */
+        .analysis-scroll {
+            max-height: 220px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #1976d2 #e0e0e0;
+        }
+        .analysis-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .analysis-scroll::-webkit-scrollbar-track {
+            background: #e0e0e0;
+            border-radius: 10px;
+        }
+        .analysis-scroll::-webkit-scrollbar-thumb {
+            background: #1976d2;
+            border-radius: 10px;
+        }
+        .method-btn {
+            position: relative;
+            border-left: 0 solid #1976d2;
+            transition: all 0.15s ease;
+        }
+        .method-btn:hover {
+            border-left-width: 4px;
+            background: #f0f7ff;
+        }
+        .active-btn {
+            background: linear-gradient(90deg, #1976d2, #2196f3);
+            color: #fff;
+            font-weight: 500;
+        }
+        .tooltip-box {
+            position: absolute;
+            top: 0;
+            left: 100%;
+            width: 230px;
+            padding: 12px;
+            background: #fff;
+            border-radius: 6px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(0);
+            transition: all 0.2s ease;
+            pointer-events: none;
+            z-index: 30;
+        }
+        .method-btn:hover .tooltip-box {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(6px);
+        }
+        .recommend-btn {
+            background: linear-gradient(45deg, #1976d2, #42a5f5);
+            color: #fff;
+            font-weight: 500;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+        .recommend-btn::after {
+            content: "";
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 70%);
+            transform: rotate(45deg);
+            animation: shine 3s linear infinite;
+        }
+        @keyframes shine {
+            0% { transform: translateX(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) rotate(45deg); }
+        }
+        .chart-container {
+            min-height: 500px;
+            background: #fff;
+            padding: 0.5rem;
+        }
+        .result-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 12px;
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="navbar flex justify-between items-center">
+            <div class="flex items-center space-x-6">
+                <button class="mr-4"><i class="fas fa-bars text-xl"></i></button>
+                <div class="flex items-center space-x-6">
+                    <div class="flex items-center border-b-2 border-white pb-0.5"><i class="fas fa-tachometer-alt mr-1"></i><span class="font-medium">ダッシュボード</span></div>
+                    <div class="flex items-center opacity-80 hover:opacity-100"><i class="fas fa-chart-line mr-1"></i><span>レポート</span></div>
+                    <div class="flex items-center opacity-80 hover:opacity-100"><i class="fas fa-database mr-1"></i><span>データ</span></div>
+                    <div class="flex items-center opacity-80 hover:opacity-100"><i class="fas fa-cog mr-1"></i><span>設定</span></div>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="bg-white bg-opacity-30 rounded-full p-1 hover:bg-opacity-50 cursor-pointer"><i class="fas fa-bell"></i></div>
+                <div class="bg-white bg-opacity-30 rounded-full p-1 hover:bg-opacity-50 cursor-pointer"><i class="fas fa-user"></i></div>
+            </div>
+        </header>
+
+        <!-- Main content: 3 columns horizontally -->
+        <main class="main-content p-5 space-x-6">
+            <!-- Column 1: Import -->
+            <section class="w-1/4 flex-shrink-0 pr-4">
+                <h3 class="text-gray-700 text-lg font-medium mb-2">データインポート</h3>
+                <div class="card mb-4">
+                    <div id="upload-area" class="upload-zone h-44 rounded-lg flex flex-col items-center justify-center p-4">
+                        <div class="bg-blue-100 rounded-full p-2 mb-2"><i class="fas fa-cloud-upload-alt text-blue-600 text-xl"></i></div>
+                        <p class="text-blue-600 font-medium">ファイルをアップロード</p>
+                        <p class="text-gray-500 text-xs">またはここにファイルをドロップ</p>
+                        <p class="text-gray-400 text-xs mt-2">対応形式: CSV / XLSX / JSON</p>
+                        <input type="file" id="file-input" accept=".csv,.xlsx,.json" class="hidden" />
+                    </div>
+                </div>
+
+                <!-- Recent files -->
+                <div class="flex justify-between items-center mb-2"><h3 class="text-gray-700 text-md font-medium">最近のファイル</h3><button class="text-blue-500 text-xs hover:underline">すべて表示</button></div>
+                <div id="recent-files-list">
+                    <div class="card p-2 mb-2 flex justify-between items-center cursor-pointer"><div class="flex items-center"><i class="fas fa-file-excel text-green-600 mr-2"></i><span class="text-gray-700 text-sm">sales_data_2024.xlsx</span></div><span class="text-gray-500 text-xs">今日</span></div>
+                    <div class="card p-2 mb-2 flex justify-between items-center cursor-pointer"><div class="flex items-center"><i class="fas fa-file-csv text-black mr-2"></i><span class="text-gray-700 text-sm">survey_results.csv</span></div><span class="text-gray-500 text-xs">昨日</span></div>
+                </div>
+            </section>
+
+            <!-- Column 2: Analysis methods -->
+            <section class="w-1/4 flex-shrink-0 px-4">
+                <h3 class="text-gray-700 text-lg font-medium mb-2">分析手法</h3>
+
+                <!-- Column selectors (hidden initially) -->
+                <div class="bg-white rounded-lg p-3 mb-3 shadow flex space-x-4">
+                  <div class="flex items-center space-x-2 flex-1 min-w-0">
+                    <label class="text-xs text-gray-500" for="column1-select">列1</label>
+                    <select id="column1-select" class="border border-gray-300 rounded p-1 text-sm w-full"></select>
+                  </div>
+                  <div class="flex items-center space-x-2 flex-1 min-w-0">
+                    <label class="text-xs text-gray-500" for="column2-select">列2</label>
+                    <select id="column2-select" class="border border-gray-300 rounded p-1 text-sm w-full"></select>
+                  </div>
+                </div>
+
+                <!-- Methods list -->
+                <div class="bg-white rounded-lg p-2 mb-3 shadow analysis-scroll">
+                    <div class="grid grid-cols-1 gap-1">
+                        <button id="paired-method-btn" class="active-btn p-3 rounded-lg text-left method-btn"><i class="fas fa-calculator mr-2"></i>データの平均を比較する (同類)<div class="tooltip-box"><p class="text-blue-600 font-medium text-xs mb-1">対応あり t検定</p><p class="text-xs text-gray-600">時系列など同一対象の測定に。</p></div></button>
+                        <button id="unpaired-method-btn" class="p-3 rounded-lg text-left method-btn"><i class="fas fa-calculator mr-2"></i>データの平均を比較する (別物)<div class="tooltip-box"><p class="text-blue-600 font-medium text-xs mb-1">対応なし t検定</p><p class="text-xs text-gray-600">異なる2群の平均差検定。</p></div></button>
+                        <button id="slr-method-btn" class="p-3 rounded-lg text-left method-btn"><i class="fas fa-random mr-2"></i>データの関係性を調べる<div class="tooltip-box"><p class="text-blue-600 font-medium text-xs mb-1">単回帰分析</p><p class="text-xs text-gray-600">2変数間の線形関係。</p></div></button>
+                        <button id="anova-method-btn" class="p-3 rounded-lg text-left method-btn"><i class="fas fa-chart-bar mr-2"></i>データのばらつきを見る<div class="tooltip-box"><p class="text-blue-600 font-medium text-xs mb-1">分散分析</p><p class="text-xs text-gray-600">複数群の分散比較。</p></div></button>
+                        <button id="kmeans-method-btn" class="p-3 rounded-lg text-left method-btn"><i class="fas fa-sitemap mr-2"></i>データをグループに分ける<div class="tooltip-box"><p class="text-blue-600 font-medium text-xs mb-1">クラスタリング</p><p class="text-xs text-gray-600">似た特徴を持つグループ化。</p></div></button>
+                        <button class="p-3 rounded-lg text-left method-btn"><i class="fas fa-compress-arrows-alt mr-2"></i>データの特徴を抽出する(主成分分析)<div class="tooltip-box"><p class="text-blue-600 font-medium text-xs mb-1">主成分分析</p><p class="text-xs text-gray-600">次元圧縮で主要特徴抽出。</p></div></button>
+                        <button class="p-3 rounded-lg text-left method-btn"><i class="fas fa-compress-arrows-alt mr-2"></i>データの特徴を抽出する(因子分析)<div class="tooltip-box"><p class="text-blue-600 font-medium text-xs mb-1">因子分析</p><p class="text-xs text-gray-600">共通因子</p></div></button>
+                        <button class="p-3 rounded-lg text-left method-btn"><i class="fas fa-network-wired mr-2"></i>複数の要因の影響を見る<div class="tooltip-box"><p class="text-blue-600 font-medium text-xs mb-1">重回帰 / ANOVA</p><p class="text-xs text-gray-600">多変量の影響評価。</p></div></button>
+                    </div>
+                </div>
+
+                <!-- AI helper -->
+                <div class="flex items-center mb-2"><div class="bg-blue-100 mr-2 p-1 rounded text-blue-600"><i class="fas fa-robot"></i></div><h3 class="text-gray-700 text-md font-medium">AI分析サポート</h3></div>
+                <button class="recommend-btn p-3 w-full rounded-lg mb-3 flex items-center justify-center"><i class="fas fa-magic mr-2"></i>推奨する統計的手法を探す</button>
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
+                    <div class="flex items-start mb-2"><div class="bg-blue-500 rounded-full p-0.5 text-xs text-white mr-1.5 mt-0.5"><i class="fas fa-star"></i></div><p class="text-blue-800 text-xs"><span class="font-medium">おすすめ:</span> このデータセットには以下が最適</p></div>
+                    <button class="active-btn p-2 text-sm w-full rounded-lg text-left flex items-center justify-between mb-2"><span><i class="fas fa-sitemap mr-2"></i>データをグループに分ける</span><i class="fas fa-check-circle"></i></button>
+                    <button class="p-2 text-sm w-full rounded-lg text-left flex items-center justify-between bg-white hover:bg-gray-100 mb-2"><span><i class="fas fa-calculator mr-2"></i>データの平均を比較する</span><i class="fas fa-plus-circle text-gray-400"></i></button>
+                    <button class="p-2 text-sm w-full rounded-lg text-left flex items-center justify-between bg-white hover:bg-gray-100"><span><i class="fas fa-compress-arrows-alt mr-2"></i>データの特徴を抽出する</span><i class="fas fa-plus-circle text-gray-400"></i></button>
+                </div>
+            </section>
+
+            <!-- Column 3: Results -->
+            <section class="flex-1 pl-4 overflow-y-auto">
+                <h3 class="text-gray-700 text-lg font-medium mb-2">分析結果</h3>
+                <div id="result-display" class="text-sm text-gray-700 mb-2"></div>
+                <div id="explanation-display" class="text-sm text-gray-700 mb-2"></div>
+                
+                <div class="card p-3 mb-3">
+                    <div class="flex justify-between items-center mb-2"><h4 class="font-medium text-gray-700 text-sm">データの概要</h4><button class="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs hover:bg-blue-100">詳細</button></div>
+<div id="data-summary-plot" class="chart-container"><div class="h-full flex items-end justify-between px-2"><div class="h-1/3 w-6 bg-blue-500 rounded-t"></div><div class="h-1/2 w-6 bg-blue-500 rounded-t"></div><div class="h-3/4 w-6 bg-blue-500 rounded-t"></div><div class="h-2/3 w-6 bg-blue-500 rounded-t"></div><div class="h-full w-6 bg-blue-500 rounded-t"></div><div class="h-3/5 w-6 bg-blue-500 rounded-t"></div><div class="h-2/5 w-6 bg-blue-500 rounded-t"></div><div class="h-4/5 w-6 bg-blue-500 rounded-t"></div></div></div><div id="distribution-plot" class="chart-container mt-3"></div>
+                </div>
+                <!-- Insight -->
+                <div class="flex items-center justify-between mb-2"><h4 class="text-gray-700 font-medium text-md">AI分析インサイト</h4><span class="result-tag">現在の分析: データをグループに分ける</span></div>
+                <div class="card p-3 mb-3"><div class="flex items-center mb-2"><div class="mr-2 text-blue-600"><i class="fas fa-lightbulb"></i></div><h5 class="font-medium text-sm">データに2つの明確なグループが存在します</h5></div><div class="bg-gray-50 p-2 rounded"><div class="relative w-full h-24"><div class="absolute left-1/6 top-1/6 w-24 h-24 rounded-full border border-blue-200 bg-blue-50 opacity-50"></div><div class="absolute right-1/6 bottom-1/6 w-32 h-16 rounded-full border border-red-200 bg-red-50 opacity-50"></div><div class="absolute left-1/5 top-1/5 w-2 h-2 bg-blue-600 rounded-full"></div><div class="absolute left-1/4 top-1/4 w-2 h-2 bg-blue-600 rounded-full"></div><div class="absolute left-1/3 top-1/6 w-2 h-2 bg-blue-600 rounded-full"></div><div class="absolute left-1/6 top-1/3 w-2 h-2 bg-blue-600 rounded-full"></div><div class="absolute right-1/4 bottom-1/4 w-2 h-2 bg-red-600 rounded-full"></div><div class="absolute right-1/6 bottom-1/3 w-2 h-2 bg-red-600 rounded-full"></div><div class="absolute right-1/5 bottom-1/5 w-2 h-2 bg-red-600 rounded-full"></div><div class="absolute right-1/3 bottom-1/6 w-2 h-2 bg-red-600 rounded-full"></div></div></div><p class="text-xs text-gray-600 mt-2">グループA（青）とグループB（赤）は明確に分かれています。</p></div>
+                <div class="card p-3 mb-4 bg-blue-50 border-l-4 border-blue-400"><div class="flex items-start"><div class="mr-2 text-blue-600"><i class="fas fa-info-circle"></i></div><div><h5 class="font-medium text-blue-800 text-xs mb-1">次のステップ推奨</h5><p class="text-xs text-gray-700">各グループの特徴を更に分析するために「データの平均を比較する」を試してみましょう。</p><button class="mt-2 px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded inline-flex items-center"><i class="fas fa-arrow-right mr-1"></i>この分析に進む</button></div></div></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Dummy JS for demo -->
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const uploadArea = document.getElementById('upload-area');
+        const col1Select = document.getElementById('column1-select');
+        const col2Select = document.getElementById('column2-select');
+        const resultEl = document.getElementById('result-display');
+        const explanationEl = document.getElementById('explanation-display');
+        let parsedData = null;
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('bg-blue-100'); });
+        uploadArea.addEventListener('dragleave', e => { e.preventDefault(); uploadArea.classList.remove('bg-blue-100'); });
+        uploadArea.addEventListener('drop', e => {
+            e.preventDefault();
+            uploadArea.classList.remove('bg-blue-100');
+            fileInput.files = e.dataTransfer.files;
+            fileInput.dispatchEvent(new Event('change'));
+        });
+
+        function populateSelects(cols) {
+            col1Select.innerHTML = cols.map(c => `<option value="${c}">${c}</option>`).join('');
+            col2Select.innerHTML = col1Select.innerHTML;
+        }
+
+        fileInput.addEventListener('change', async () => {
+            resultEl.textContent = '読み込み中…';
+            const file = fileInput.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const dataJson = await res.json();
+                const cols = dataJson.columns;
+                // Convert columns-of-arrays to array-of-objects
+                parsedData = cols[0] in dataJson.data
+                    ? dataJson.data[cols[0]].map((_, i) => {
+                        const row = {};
+                        cols.forEach(c => row[c] = dataJson.data[c][i]);
+                        return row;
+                      })
+                    : [];
+                populateSelects(cols);
+                resultEl.textContent = `${file.name} を読み込みました。`;
+            } catch (err) {
+                resultEl.textContent = 'ファイル読み込みに失敗しました';
+            }
+        });
+
+        // K-means clustering on button click
+        document.getElementById('kmeans-method-btn').addEventListener('click', async function() {
+            // ボタンのアクティブ状態切替
+            document.querySelectorAll('.method-btn').forEach(btn => btn.classList.remove('active-btn'));
+            this.classList.add('active-btn');
+            // グラフリセット
+            const distDiv = document.getElementById('distribution-plot');
+            distDiv.innerHTML = '';
+            distDiv.style.display = 'block';
+            if (!parsedData) { alert('データをアップロードしてください'); return; }
+            const col1 = col1Select.value;
+            const col2 = col2Select.value;
+            // Prepare data (2D array)
+            const data = parsedData.map(row => [
+                parseFloat(row[col1]),
+                parseFloat(row[col2])
+            ]);
+            // Call kmeans API
+            const res = await fetch('/kmeans_clustering', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    data, 
+                    n_clusters: 3,
+                    group1_name: col1,
+                    group2_name: col2
+                })
+            });
+            const json = await res.json();
+            // Display plot
+            document.getElementById('distribution-plot').innerHTML = json.plot_html;
+            // Display results
+            resultEl.innerHTML = `
+                <p>クラスタ数: ${json.labels.length}</p>
+                <p>クラスタ重心: ${JSON.stringify(json.centroids)}</p>
+                <p>慣性: ${json.inertia.toFixed(4)}</p>
+            `;
+            // Generate explanation
+            const prompt = `k-meansクラスタリングの結果、${json.centroids.length}個のクラスタが生成されました。慣性値は${json.inertia.toFixed(4)}です。この結果について専門用語を極力使わずに2行程度で端的に解説してください。`;
+            const chatRes = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, model: 'gpt-4.1-mini' })
+            });
+            const chatJson = await chatRes.json();
+            explanationEl.textContent = chatJson.response;
+            const maxX = Math.max(...group1, ...group2);
+            const xVals = Array.from({ length: 100 }, (_, i) => minX + (maxX - minX) * i / 99);
+            const pdf = (x, mean, sd) => (1 / (sd * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * ((x - mean) / sd) ** 2);
+            const y1 = xVals.map(x => pdf(x, stats1.mean, stats1.sd));
+            const y2 = xVals.map(x => pdf(x, stats2.mean, stats2.sd));
+            Plotly.newPlot(summaryDiv, [
+                {
+                    x: xVals,
+                    y: y1,
+                    mode: 'lines',
+                    name: `${col1} 正規分布`,
+                    line: { width: 3, color: '#1976d2' },
+                    fill: 'tozeroy',
+                    fillcolor: 'rgba(25, 118, 210, 0.3)'
+                },
+                {
+                    x: xVals,
+                    y: y2,
+                    mode: 'lines',
+                    name: `${col2} 正規分布`,
+                    line: { width: 3, color: '#e53935' },
+                    fill: 'tozeroy',
+                    fillcolor: 'rgba(229, 57, 53, 0.3)'
+                }
+            ], {
+                title: '正規分布',
+                height: 500,
+                margin: { t: 40, l: 50, r: 10, b: 50 },
+                xaxis: { title: '値' },
+                yaxis: { title: '確率密度' }
+            });
+        });
+
+        // Simple Linear Regression on button click
+document.getElementById('slr-method-btn').addEventListener('click', async function() {
+            // ボタンのアクティブ状態切替
+            document.querySelectorAll('.method-btn').forEach(btn => btn.classList.remove('active-btn'));
+            this.classList.add('active-btn');
+            // グラフリセット
+            const sumDiv = document.getElementById('data-summary-plot');
+            sumDiv.innerHTML = '';
+            sumDiv.style.display = 'none';
+            const distDiv = document.getElementById('distribution-plot');
+            distDiv.innerHTML = '';
+            distDiv.style.display = 'block';
+            if (!parsedData) { alert('データをアップロードしてください'); return; }
+            const col1 = col1Select.value;
+            const col2 = col2Select.value;
+            // Prepare data
+            const x = parsedData.map(row => parseFloat(row[col1]));
+            const y = parsedData.map(row => parseFloat(row[col2]));
+            // Call regression API
+            const res = await fetch('/simple_linear_regression', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x, y, x_name: col1, y_name: col2 })
+            });
+            const json = await res.json();
+            // Hide summary chart
+            document.getElementById('data-summary-plot').style.display = 'none';
+            // Plot regression client-side with labels
+            const regDiv = document.getElementById('distribution-plot');
+            regDiv.style.marginTop = '0';
+            const yPred = x.map(val => json.intercept + json.slope * val);
+                Plotly.newPlot(regDiv, [
+                    { x, y, mode: 'markers', name: col1 },
+                    { x, y: yPred, mode: 'lines', name: '回帰直線' }
+                ], {
+                    title: '単回帰分析',
+                    xaxis: { title: col1 },
+                    yaxis: { title: col2 },
+                    height: 500,
+                    margin: { t: 40, l: 50, r: 10, b: 50 }
+                });
+            // Display metrics
+            resultEl.innerHTML = `<p>slope: ${json.slope.toFixed(4)}, intercept: ${json.intercept.toFixed(4)}, r: ${json.r_value.toFixed(4)}, R²: ${json.r_squared.toFixed(4)}</p>`;
+            // Generate explanation
+            const explainRes = await fetch('/explain_slr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slope: json.slope, intercept: json.intercept, r_squared: json.r_squared, columns: [col1, col2] })
+            });
+            const explainJson = await explainRes.json();
+            explanationEl.textContent = explainJson.explanation;
+        });
+
+        // Unpaired t-test on button click
+        document.getElementById('unpaired-method-btn').addEventListener('click', async function() {
+            // ボタンのアクティブ状態切替
+            document.querySelectorAll('.method-btn').forEach(btn => btn.classList.remove('active-btn'));
+            this.classList.add('active-btn');
+            if (!parsedData) { alert('データをアップロードしてください'); return; }
+            const col1 = col1Select.value;
+            const col2 = col2Select.value;
+            const group1 = parsedData.map(row => parseFloat(row[col1]));
+            const group2 = parsedData.map(row => parseFloat(row[col2]));
+            // Call unpaired t-test API
+            const res = await fetch('/t_test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ group1, group2, group1_name: col1, group2_name: col2, equal_var: false, nan_policy: 'omit' })
+            });
+            const json = await res.json();
+            // Display t and p values
+            resultEl.innerHTML = `<p>t値: ${json.t_statistic.toFixed(4)}</p><p>p値: ${json.p_value.toFixed(4)}</p>`;
+            // Generate explanation via LLM
+            const prompt = `対応なしt検定の結果、t値は${json.t_statistic.toFixed(4)}、p値は${json.p_value.toFixed(4)}です。この結果について専門用語を極力使わずに2行程度で端的に解説してください。`;
+            const chatRes = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, model: 'gpt-4.1-mini' })
+            });
+            const chatJson = await chatRes.json();
+            explanationEl.textContent = chatJson.response;
+            // Box plot in data summary
+            const boxDiv = document.getElementById('data-summary-plot');
+            Plotly.newPlot(boxDiv, [
+                { y: group1, name: col1, type: 'box', boxpoints: 'all', jitter: 0.5, pointpos: -1.8 },
+                { y: group2, name: col2, type: 'box', boxpoints: 'all', jitter: 0.5, pointpos: -1.8 }
+            ], {
+                title: '箱ひげ図',
+                yaxis: { title: '値' },
+                height: 500,
+                margin: { t: 40, l: 50, r: 10, b: 50 }
+            });
+        });
+
+ // One-way ANOVA on button click
+        document.getElementById('anova-method-btn').addEventListener('click', async function() {
+            // ボタンのアクティブ状態切替
+            document.querySelectorAll('.method-btn').forEach(btn => btn.classList.remove('active-btn'));
+            this.classList.add('active-btn');
+            // グラフリセット
+            const distDiv = document.getElementById('distribution-plot');
+            Plotly.purge(distDiv);
+            distDiv.style.display = 'none';
+            const sumDiv = document.getElementById('data-summary-plot');
+            Plotly.purge(sumDiv);
+            sumDiv.style.display = 'block';
+            if (!parsedData) { alert('データをアップロードしてください'); return; }
+            const col1 = col1Select.value;
+            const col2 = col2Select.value;
+            const group1 = parsedData.map(row => parseFloat(row[col1]));
+            const group2 = parsedData.map(row => parseFloat(row[col2]));
+            // Call ANOVA API
+            const res = await fetch('/anova', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ groups: [group1, group2], nan_policy: 'omit' })
+            });
+            const json = await res.json();
+            // 結果表示
+            resultEl.innerHTML = `<p>F値: ${json.F_statistic.toFixed(4)}</p><p>p値: ${json.p_value.toFixed(4)}</p>`;
+            
+            // Generate explanation via LLM
+            const prompt = `分散分析(ANOVA)の結果、F値は${json.F_statistic.toFixed(4)}、p値は${json.p_value.toFixed(4)}です。この結果について専門用語を極力使わずに2行程度で端的に解説してください。`;
+            const chatRes = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, model: 'gpt-4.1-mini' })
+            });
+            const chatJson = await chatRes.json();
+            explanationEl.textContent = chatJson.response;
+            // 箱ひげ図プロット
+            const boxDiv = document.getElementById('data-summary-plot');
+            Plotly.newPlot(boxDiv, [
+                { y: group1, name: col1, type: 'box' },
+                { y: group2, name: col2, type: 'box' }
+            ], {
+                title: '箱ひげ図 (ANOVA)',
+                yaxis: { title: '値' },
+                height: 500,
+                margin: { t: 40, l: 50, r: 10, b: 50 }
+            });
+        });
+
+    </script>
+</body>
+</html>
